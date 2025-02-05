@@ -1,7 +1,7 @@
 ;;; deno-fmt.el --- Minor mode for using deno fmt on save -*- lexical-binding: t; -*-
 
 ;;; Author: Russell Clarey <http://github/rclarey>
-;;; Package-Version: 0.1.0
+;;; Package-Version: 0.2.0
 ;;; URL: https://github.com/russell/deno-emacs
 ;;; Package-Requires: ((emacs "24"))
 
@@ -114,21 +114,28 @@
   (interactive)
   (if (not (executable-find "deno"))
       (error "deno executable not found. Visit \"https://deno.land/#installation\" for installation instructions")
-    (let ((tempfile (make-temp-file "deno-fmt-temp" nil ".ts"))
-          (patchbuffer (get-buffer-create "*deno-fmt patch*"))
-          (outbuffer (get-buffer-create "*deno-fmt output*")))
+    (let* ((tempfile (make-temp-file "deno-fmt-temp" nil ".ts"))
+           (patchbuffer (get-buffer-create "*deno-fmt patch*"))
+           (jsoncdir (locate-dominating-file buffer-file-name "deno.jsonc"))
+           (jsondir (locate-dominating-file buffer-file-name "deno.json"))
+           (options (cond ((and jsoncdir (file-directory-p jsoncdir)) (list (concat "--config=" (expand-file-name jsoncdir ) "deno.jsonc") ))
+                          ((and jsondir (file-directory-p jsondir)) (list(concat "--config=" (expand-file-name jsondir) "deno.json")))
+                          (t ())))
+           (outbuffer (get-buffer-create "*deno-fmt output*")))
       (unwind-protect
           (progn
             (with-current-buffer patchbuffer (erase-buffer))
             (with-current-buffer outbuffer (erase-buffer))
             (write-region nil nil tempfile)
-            (if (zerop (call-process "deno" nil outbuffer nil "fmt" tempfile))
+            (if (zerop (apply 'call-process
+                              "deno" nil outbuffer nil
+                              (append (list "fmt" tempfile) options)))
                 (progn
                   (call-process-region
                    (point-min) (point-max) "diff" nil patchbuffer
                    nil "-n" "--strip-trailing-cr" "-" tempfile)
                   (deno-fmt--apply-rcs-patch patchbuffer)
-                  (message "deno-fmt: formatted"))
+                  (message (format "deno-fmt: formatted with options %s" options)))
               (message "deno-fmt: failed"))))
       (kill-buffer patchbuffer)
       (delete-file tempfile))))
