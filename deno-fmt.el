@@ -109,6 +109,18 @@
               (error "Invalid rcs patch or internal error in deno-fmt--apply-rcs-patch")))))))
     (move-to-column column)))
 
+(defun get-deno-config-path (filename)
+  "Return the full path to the Deno config file if found, else nil."
+  (let ((dir (locate-dominating-file buffer-file-name filename)))
+    (when (and dir (file-directory-p dir))
+      (expand-file-name filename dir))))
+
+(defun build-deno-config-option (config-path)
+  "Return the --config option string if CONFIG-PATH is non-nil, else nil."
+  (when config-path
+    (concat "--config=" config-path)))
+
+
 (defun deno-fmt ()
   "Format the current buffer with `deno fmt'."
   (interactive)
@@ -116,11 +128,17 @@
       (error "deno executable not found. Visit \"https://deno.land/#installation\" for installation instructions")
     (let* ((tempfile (make-temp-file "deno-fmt-temp" nil ".ts"))
            (patchbuffer (get-buffer-create "*deno-fmt patch*"))
-           (jsoncdir (locate-dominating-file buffer-file-name "deno.jsonc"))
-           (jsondir (locate-dominating-file buffer-file-name "deno.json"))
-           (options (cond ((and jsoncdir (file-directory-p jsoncdir)) (list (concat "--config=" (expand-file-name jsoncdir ) "deno.jsonc") ))
-                          ((and jsondir (file-directory-p jsondir)) (list(concat "--config=" (expand-file-name jsondir) "deno.json")))
-                          (t ())))
+           (jsonc-config (get-deno-config-path "deno.jsonc"))
+           (json-config (get-deno-config-path "deno.json"))
+           (config-option
+            (cond
+             (jsonc-config
+              (list (build-deno-config-option jsonc-config)))
+             (json-config
+              (list (build-deno-config-option json-config )))
+             (t
+              '())))
+           (options (append '() config-option))
            (outbuffer (get-buffer-create "*deno-fmt output*")))
       (unwind-protect
           (progn
@@ -151,3 +169,4 @@
 
 (provide 'deno-fmt)
 ;;; deno-fmt.el ends here
+
